@@ -45,13 +45,26 @@ if ($result->num_rows === 1) {
         $_SESSION['username'] = $user['Username'];
         $_SESSION['role'] = $user['RoleName'];
         
-        // Redirect based on role
+        // Redirect based on role - MODIFIED SECTION FOR RESTAURANT OWNER
         switch ($user['RoleName']) {
             case 'Admin':
                 header("Location: admin_dashboard.php");
                 break;
             case 'Restaurant Owner':
-                header("Location: owner_dashboard.php");
+                // Get the restaurant this owner manages
+                $owner_stmt = $conn->prepare("SELECT RestaurantID FROM restaurant WHERE AdminID = ? AND IsDeleted = 0");
+                $owner_stmt->bind_param("i", $_SESSION['user_id']);
+                $owner_stmt->execute();
+                $restaurant = $owner_stmt->get_result()->fetch_assoc();
+                $owner_stmt->close();
+                
+                if ($restaurant) {
+                    $_SESSION['restaurant_id'] = $restaurant['RestaurantID'];
+                    header("Location: owner_dashboard.php");
+                } else {
+                    // If owner has no restaurant, redirect to setup
+                    header("Location: owner_setup.php");
+                }
                 break;
             default:
                 header("Location: user_home.php");
