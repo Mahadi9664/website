@@ -17,18 +17,6 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Handle comment submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
-    $stmt = $conn->prepare("INSERT INTO commentmetadata (ReviewID, UserID, CommentText) VALUES (?, ?, ?)");
-    $stmt->bind_param("iis", $_POST['review_id'], $_SESSION['user_id'], $_POST['comment_text']);
-    $stmt->execute();
-    $stmt->close();
-    
-    // Redirect to prevent form resubmission
-    header("Location: restaurants.php?".$_SERVER['QUERY_STRING']);
-    exit();
-}
-
 // Get filter parameters
 $search = $_GET['search'] ?? '';
 $cuisine_filter = $_GET['cuisine'] ?? '';
@@ -66,10 +54,17 @@ if (!empty($rating_filter) && is_numeric($rating_filter)) {
 
 // Add sorting
 switch ($sort) {
-    case 'name_desc': $query .= " ORDER BY r.Name DESC"; break;
-    case 'rating_asc': $query .= " ORDER BY AvgRating ASC"; break;
-    case 'rating_desc': $query .= " ORDER BY AvgRating DESC"; break;
-    default: $query .= " ORDER BY r.Name ASC";
+    case 'name_desc':
+        $query .= " ORDER BY r.Name DESC";
+        break;
+    case 'rating_asc':
+        $query .= " ORDER BY AvgRating ASC";
+        break;
+    case 'rating_desc':
+        $query .= " ORDER BY AvgRating DESC";
+        break;
+    default: // name_asc
+        $query .= " ORDER BY r.Name ASC";
 }
 
 $restaurants = $conn->query($query);
@@ -158,34 +153,8 @@ $cuisines = $conn->query("SELECT DISTINCT CuisineType FROM restaurant WHERE IsDe
             font-weight: bold;
             margin-bottom: 10px;
         }
-        .reviews-section {
-            margin-top: 15px;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
-        }
-        .review-item {
-            margin-bottom: 15px;
-        }
-        .review-author {
-            font-weight: bold;
-        }
-        .review-text {
-            margin: 5px 0;
-            font-size: 0.9rem;
-        }
-        .comment-form {
-            margin-top: 10px;
-        }
-        .comment-form textarea {
-            width: 100%;
-            padding: 8px;
-            border: 1px solid #ced4da;
-            border-radius: 4px;
-            resize: vertical;
-            min-height: 60px;
-        }
-        .btn-sm {
-            padding: 5px 10px;
+        .review-count {
+            color: #6c757d;
             font-size: 0.8rem;
         }
         .back-link {
@@ -203,20 +172,20 @@ $cuisines = $conn->query("SELECT DISTINCT CuisineType FROM restaurant WHERE IsDe
     </style>
 </head>
 <body>
-    <h1>Browse Restaurants</h1>
+    <h1>Restaurants</h1>
     
     <!-- Filter Section -->
     <div class="filters">
         <form method="GET">
             <div class="filter-row">
                 <div class="filter-group">
-                    <label for="search">Search</label>
+                    <label for="search">Search:</label>
                     <input type="text" id="search" name="search" value="<?= htmlspecialchars($search) ?>" 
-                           placeholder="Name or location">
+                           placeholder="Restaurant name or location">
                 </div>
                 
                 <div class="filter-group">
-                    <label for="cuisine">Cuisine Type</label>
+                    <label for="cuisine">Cuisine:</label>
                     <select id="cuisine" name="cuisine">
                         <option value="">All Cuisines</option>
                         <?php while($cuisine = $cuisines->fetch_assoc()): ?>
@@ -231,32 +200,30 @@ $cuisines = $conn->query("SELECT DISTINCT CuisineType FROM restaurant WHERE IsDe
             
             <div class="filter-row">
                 <div class="filter-group">
-                    <label for="rating">Minimum Rating</label>
+                    <label for="rating">Minimum Rating:</label>
                     <select id="rating" name="rating">
                         <option value="">Any Rating</option>
-                        <option value="1" <?= $rating_filter == '1' ? 'selected' : '' ?>>★ (1+)</option>
-                        <option value="2" <?= $rating_filter == '2' ? 'selected' : '' ?>>★★ (2+)</option>
-                        <option value="3" <?= $rating_filter == '3' ? 'selected' : '' ?>>★★★ (3+)</option>
-                        <option value="4" <?= $rating_filter == '4' ? 'selected' : '' ?>>★★★★ (4+)</option>
+                        <option value="1" <?= $rating_filter == '1' ? 'selected' : '' ?>>★+ (1+)</option>
+                        <option value="2" <?= $rating_filter == '2' ? 'selected' : '' ?>>★★+ (2+)</option>
+                        <option value="3" <?= $rating_filter == '3' ? 'selected' : '' ?>>★★★+ (3+)</option>
+                        <option value="4" <?= $rating_filter == '4' ? 'selected' : '' ?>>★★★★+ (4+)</option>
                         <option value="5" <?= $rating_filter == '5' ? 'selected' : '' ?>>★★★★★ (5)</option>
                     </select>
                 </div>
                 
                 <div class="filter-group">
-                    <label for="sort">Sort By</label>
+                    <label for="sort">Sort By:</label>
                     <select id="sort" name="sort">
                         <option value="name_asc" <?= $sort == 'name_asc' ? 'selected' : '' ?>>Name (A-Z)</option>
                         <option value="name_desc" <?= $sort == 'name_desc' ? 'selected' : '' ?>>Name (Z-A)</option>
-                        <option value="rating_asc" <?= $sort == 'rating_asc' ? 'selected' : '' ?>>Rating (Low to High)</option>
-                        <option value="rating_desc" <?= $sort == 'rating_desc' ? 'selected' : '' ?>>Rating (High to Low)</option>
+                        <option value="rating_asc" <?= $sort == 'rating_asc' ? 'selected' : '' ?>>Rating (Low-High)</option>
+                        <option value="rating_desc" <?= $sort == 'rating_desc' ? 'selected' : '' ?>>Rating (High-Low)</option>
                     </select>
                 </div>
             </div>
             
-            <div class="filter-row">
-                <button type="submit">Apply Filters</button>
-                <a href="restaurants.php" style="padding: 8px 16px; background-color: #dc3545; color: white; text-decoration: none; border-radius: 4px;">Reset</a>
-            </div>
+            <button type="submit">Apply Filters</button>
+            <a href="restaurants.php">Reset Filters</a>
         </form>
     </div>
     
@@ -275,46 +242,7 @@ $cuisines = $conn->query("SELECT DISTINCT CuisineType FROM restaurant WHERE IsDe
                         <?= str_repeat('★', round($restaurant['AvgRating'])) ?>
                         <?= str_repeat('☆', 5 - round($restaurant['AvgRating'])) ?>
                         (<?= number_format($restaurant['AvgRating'], 1) ?>)
-                        <span style="color: #6c757d; font-size: 0.8rem;">from <?= $restaurant['ReviewCount'] ?> reviews</span>
-                    </div>
-                    
-                    <!-- Recent Reviews Section -->
-                    <div class="reviews-section">
-                        <h4>Recent Reviews</h4>
-                        <?php 
-                        // Get recent reviews
-                        $reviews = $conn->query("
-                            SELECT rm.*, u.Username 
-                            FROM reviewmetabase rm
-                            JOIN usercredentials u ON rm.UserID = u.UserID
-                            WHERE rm.RestaurantID = {$restaurant['RestaurantID']} AND rm.IsDeleted = 0
-                            ORDER BY rm.ReviewDate DESC
-                            LIMIT 2
-                        ");
-                        
-                        if ($reviews->num_rows > 0): ?>
-                            <?php while($review = $reviews->fetch_assoc()): ?>
-                                <div class="review-item">
-                                    <div class="review-author">
-                                        <?= htmlspecialchars($review['Username']) ?>
-                                        <span class="rating"><?= $review['Rating'] ?>★</span>
-                                    </div>
-                                    <div class="review-text">
-                                        <?= htmlspecialchars(substr($review['ReviewText'], 0, 100)) ?>
-                                        <?= strlen($review['ReviewText']) > 100 ? '...' : '' ?>
-                                    </div>
-                                    
-                                    <!-- Comment Form -->
-                                    <form class="comment-form" method="POST" onclick="event.stopPropagation()">
-                                        <input type="hidden" name="review_id" value="<?= $review['ReviewID'] ?>">
-                                        <textarea name="comment_text" placeholder="Write a comment..." required></textarea>
-                                        <button type="submit" name="add_comment" class="btn-sm">Post Comment</button>
-                                    </form>
-                                </div>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <p>No reviews yet.</p>
-                        <?php endif; ?>
+                        <span class="review-count">from <?= $restaurant['ReviewCount'] ?> reviews</span>
                     </div>
                 </div>
             <?php endwhile; ?>
