@@ -60,8 +60,8 @@ if (!isset($_SESSION['user_id'])) {
         <div class="option-card" onclick="location.href='write_review.php'">
             <h2>✍️ Write Review</h2>
         </div>
-        <div class="option-card" onclick="location.href='read_reviews.php'">
-            <h2>📖 Read Reviews</h2>
+        <div class="option-card" onclick="location.href='restaurants.php'">
+            <h2>🍽️ Browse Restaurants</h2>
         </div>
     </div>
 </body>
