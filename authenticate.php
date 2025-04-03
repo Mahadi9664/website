@@ -54,7 +54,7 @@ if ($result->num_rows === 1) {
                 header("Location: owner_dashboard.php");
                 break;
             default:
-                header("Location: user_dashboard.php");
+                header("Location: user_home.php");
         }
         exit();
     } else {
