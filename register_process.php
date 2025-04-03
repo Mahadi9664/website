@@ -1,7 +1,18 @@
 <?php
 session_start();
 
-require 'connection.php';
+// Database connection
+$db_server = "localhost";
+$db_user = "root";
+$db_pass = "";
+$db_name = "aamm";
+$conn = mysqli_connect($db_server, $db_user, $db_pass, $db_name);
+
+if (!$conn) {
+    $_SESSION['error'] = "Database connection failed";
+    header("Location: register.php");
+    exit();
+}
 
 // Get form data
 $username = trim($_POST['username'] ?? '');
