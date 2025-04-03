@@ -1,5 +1,6 @@
 <?php
 session_start();
+require 'connection.php'; // ADD THIS LINE
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -7,16 +8,6 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// Include your database connection if needed
-$db_server = "localhost";
-$db_user = "root";
-$db_pass = "";
-$db_name = "aamm";
-$conn = mysqli_connect($db_server, $db_user, $db_pass, $db_name);
-
-if (!$conn) {
-    die("Database connection failed");
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
