@@ -59,6 +59,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute();
         $stmt->close();
     }
+    
+    // Refresh the page after any form submission
+    header("Location: manage_menu.php");
+    exit();
 }
 
 // Get filter/sort parameters
@@ -122,6 +126,7 @@ $cuisines = $conn->query("SELECT * FROM cuisine");
         .form-group label { display: inline-block; width: 100px; }
         .tab-buttons { margin-bottom: 10px; }
         .action-form { display: inline; }
+        button { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -174,13 +179,14 @@ $cuisines = $conn->query("SELECT * FROM cuisine");
                     <td>
                         <form class="action-form" method="POST">
                             <input type="hidden" name="food_id" value="<?= $item['FoodID'] ?>">
-                            <button type="button" onclick="showEditForm(
-                                <?= $item['FoodID'] ?>,
-                                '<?= htmlspecialchars($item['Name'], ENT_QUOTES) ?>',
-                                '<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>',
-                                <?= $item['Price'] ?>,
-                                <?= $item['CuisineID'] ?>
-                            )">Edit</button>
+                            <button type="button" class="edit-btn" 
+                                data-id="<?= $item['FoodID'] ?>"
+                                data-name="<?= htmlspecialchars($item['Name'], ENT_QUOTES) ?>"
+                                data-desc="<?= htmlspecialchars($item['Description'], ENT_QUOTES) ?>"
+                                data-price="<?= $item['Price'] ?>"
+                                data-cuisine="<?= $item['CuisineID'] ?>">
+                                Edit
+                            </button>
                             <button type="submit" name="delete_item">Delete</button>
                         </form>
                     </td>
@@ -263,18 +269,36 @@ $cuisines = $conn->query("SELECT * FROM cuisine");
     <p><a href="owner_dashboard.php">← Back to Dashboard</a></p>
     
     <script>
-        function showEditForm(id, name, description, price, cuisineId) {
-            document.getElementById('edit-food-id').value = id;
-            document.getElementById('edit-name').value = name;
-            document.getElementById('edit-description').value = description;
-            document.getElementById('edit-price').value = price;
-            document.getElementById('edit-cuisine-id').value = cuisineId;
+        // Initialize edit buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const editButtons = document.querySelectorAll('.edit-btn');
             
-            document.getElementById('add-form').style.display = 'none';
-            document.getElementById('edit-form').style.display = 'block';
-            document.getElementById('edit-btn').disabled = false;
-        }
-        
+            editButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const foodId = this.getAttribute('data-id');
+                    const name = this.getAttribute('data-name');
+                    const description = this.getAttribute('data-desc');
+                    const price = this.getAttribute('data-price');
+                    const cuisineId = this.getAttribute('data-cuisine');
+                    
+                    // Populate edit form
+                    document.getElementById('edit-food-id').value = foodId;
+                    document.getElementById('edit-name').value = name;
+                    document.getElementById('edit-description').value = description;
+                    document.getElementById('edit-price').value = parseFloat(price).toFixed(2);
+                    document.getElementById('edit-cuisine-id').value = cuisineId;
+                    
+                    // Show edit form
+                    document.getElementById('add-form').style.display = 'none';
+                    document.getElementById('edit-form').style.display = 'block';
+                    document.getElementById('edit-btn').disabled = false;
+                    
+                    // Scroll to form
+                    document.getElementById('edit-form').scrollIntoView({ behavior: 'smooth' });
+                });
+            });
+        });
+
         function hideEditForm() {
             document.getElementById('add-form').style.display = 'block';
             document.getElementById('edit-form').style.display = 'none';
