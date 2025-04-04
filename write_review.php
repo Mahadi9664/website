@@ -1,145 +1,115 @@
 <?php
 session_start();
-require_once 'connection.php';
 
-// Check owner role and restaurant
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Restaurant Owner') {
+// Database connection
+$db_server = "localhost";
+$db_user = "root";
+$db_pass = "";
+$db_name = "aamm";
+$conn = mysqli_connect($db_server, $db_user, $db_pass, $db_name);
+
+if (!$conn) {
+    die("Database connection failed: " . mysqli_connect_error());
+}
+
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-$restaurant = $conn->query("
-    SELECT * FROM restaurant 
-    WHERE AdminID = {$_SESSION['user_id']} AND IsDeleted = 0
-")->fetch_assoc();
-
-if (!$restaurant) {
-    die("No restaurant found for this owner");
-}
-
-// Handle comment submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
-    $review_id = (int)$_POST['review_id'];
-    $comment_text = trim($_POST['comment_text']);
-    
-    $stmt = $conn->prepare("INSERT INTO commentmetadata (ReviewID, UserID, CommentDate, CommentText) VALUES (?, ?, NOW(), ?)");
-    $stmt->bind_param("iis", $review_id, $_SESSION['user_id'], $comment_text);
-    $stmt->execute();
-}
-
-// Get reviews for this restaurant
-$reviews = $conn->query("
-    SELECT r.*, u.Username 
-    FROM reviewmetabase r
-    JOIN usercredentials u ON r.UserID = u.UserID
-    WHERE r.RestaurantID = {$restaurant['RestaurantID']} AND r.IsDeleted = 0
-    ORDER BY r.ReviewDate DESC
+// Get restaurants for dropdown
+$restaurants = $conn->query("
+    SELECT RestaurantID, Name 
+    FROM restaurant 
+    WHERE IsDeleted = 0
+    ORDER BY Name
 ");
 
-// Get comments for these reviews
-$comments = [];
-if ($reviews->num_rows > 0) {
-    $review_ids = [];
-    while ($row = $reviews->fetch_assoc()) {
-        $review_ids[] = $row['ReviewID'];
-    }
-    $reviews->data_seek(0); // Reset pointer
-    
-    $comment_result = $conn->query("
-        SELECT c.*, u.Username 
-        FROM commentmetadata c
-        JOIN usercredentials u ON c.UserID = u.UserID
-        WHERE c.ReviewID IN (".implode(',', $review_ids).") AND c.IsDeleted = 0
-        ORDER BY c.CommentDate
-    ");
-    
-    while ($comment = $comment_result->fetch_assoc()) {
-        $comments[$comment['ReviewID']][] = $comment;
-    }
+// Check for errors in query execution
+if (!$restaurants) {
+    die("Error fetching restaurants: " . $conn->error);
 }
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>View Reviews</title>
+    <title>Write Review</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
-            max-width: 800px;
+            max-width: 600px;
             margin: 0 auto;
         }
-        .review {
-            border: 1px solid #ddd;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-        }
-        .review-header {
+        form {
             display: flex;
-            justify-content: space-between;
-            margin-bottom: 10px;
+            flex-direction: column;
+            gap: 15px;
         }
-        .comment {
-            background-color: #f5f5f5;
-            padding: 10px;
-            margin: 10px 0 10px 20px;
-            border-radius: 5px;
-        }
-        .comment-form {
-            margin-top: 15px;
-        }
-        textarea {
-            width: 100%;
+        select, textarea, input {
             padding: 8px;
-            margin-bottom: 5px;
+            font-size: 16px;
         }
-        .rating {
-            color: gold;
-            font-weight: bold;
+        button {
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .error {
+            color: red;
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
-    <h1>Customer Reviews for <?= htmlspecialchars($restaurant['Name']) ?></h1>
+    <h1>Write a Review</h1>
     
-    <?php if ($reviews->num_rows > 0): ?>
-        <?php while($review = $reviews->fetch_assoc()): ?>
-            <div class="review">
-                <div class="review-header">
-                    <h3><?= htmlspecialchars($review['Username']) ?></h3>
-                    <div class="rating">Rating: <?= $review['Rating'] ?>/5</div>
-                </div>
-                <p><em>Posted on <?= $review['ReviewDate'] ?></em></p>
-                <p><?= htmlspecialchars($review['ReviewText']) ?></p>
-                
-                <!-- Comments Section -->
-                <h4>Comments:</h4>
-                <?php if (!empty($comments[$review['ReviewID']])): ?>
-                    <?php foreach($comments[$review['ReviewID']] as $comment): ?>
-                        <div class="comment">
-                            <strong><?= htmlspecialchars($comment['Username']) ?></strong>
-                            <small>(<?= $comment['CommentDate'] ?>)</small>
-                            <p><?= htmlspecialchars($comment['CommentText']) ?></p>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p>No comments yet.</p>
-                <?php endif; ?>
-                
-                <!-- Add Comment Form -->
-                <form class="comment-form" method="POST">
-                    <input type="hidden" name="review_id" value="<?= $review['ReviewID'] ?>">
-                    <textarea name="comment_text" placeholder="Write a response..." required></textarea>
-                    <button type="submit" name="add_comment">Post Comment</button>
-                </form>
-            </div>
-        <?php endwhile; ?>
-    <?php else: ?>
-        <p>No reviews yet for your restaurant.</p>
+    <?php if (isset($_GET['error'])): ?>
+        <div class="error">
+            <?php 
+            switch($_GET['error']) {
+                case 'invalid_rating':
+                    echo "Please select a rating between 1 and 5 stars";
+                    break;
+                case 'empty_review':
+                    echo "Please write your review text";
+                    break;
+                case 'database':
+                    echo "There was an error saving your review. Please try again.";
+                    break;
+                default:
+                    echo "An error occurred. Please try again.";
+            }
+            ?>
+        </div>
     <?php endif; ?>
     
-    <p><a href="owner_dashboard.php">← Back to Dashboard</a></p>
+    <form action="submit_review.php" method="POST">
+        <select name="restaurant_id" required>
+            <option value="">Select Restaurant</option>
+            <?php 
+            if ($restaurants->num_rows > 0) {
+                while($row = $restaurants->fetch_assoc()) {
+                    echo '<option value="' . $row['RestaurantID'] . '">' 
+                        . htmlspecialchars($row['Name']) . '</option>';
+                }
+            } else {
+                echo '<option value="" disabled>No restaurants available</option>';
+            }
+            ?>
+        </select>
+        
+        <label for="rating">Rating (1-5):</label>
+        <input type="number" id="rating" name="rating" min="1" max="5" required>
+        
+        <textarea name="review_text" placeholder="Your review..." rows="5" required></textarea>
+        
+        <button type="submit">Submit Review</button>
+    </form>
 </body>
 </html>
-<?php $conn->close(); ?>
+<?php
+$conn->close();
+?>
