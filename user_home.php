@@ -26,6 +26,12 @@ if (!isset($_SESSION['user_id'])) {
             font-family: Arial, sans-serif;
             padding: 20px;
         }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
         .options {
             display: flex;
             justify-content: center;
@@ -43,18 +49,24 @@ if (!isset($_SESSION['user_id'])) {
         .option-card:hover {
             background-color: #f5f5f5;
         }
-        .logout {
-            text-align: right;
-            margin-bottom: 20px;
+        .profile-link {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .profile-link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <div class="logout">
-        <a href="logout.php">Logout</a>
+    <div class="header">
+        <h1>Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?></h1>
+        <div>
+            <a href="my_profile.php" class="profile-link">My Profile</a> |
+            <a href="logout.php">Logout</a>
+        </div>
     </div>
-    
-    <h1>Welcome, <?php echo htmlspecialchars($_SESSION['username']); ?></h1>
     
     <div class="options">
         <div class="option-card" onclick="location.href='write_review.php'">

@@ -24,13 +24,34 @@ if (!isset($_GET['id'])) {
 
 $restaurant_id = (int)$_GET['id'];
 
+// Handle like action (this should only update the database and echo a response)
+if (isset($_GET['like_review'])) {
+    $review_id = (int)$_GET['like_review'];
+    $user_id = $_SESSION['user_id'];
+
+    // Check if already liked
+    $check_like = $conn->query("SELECT LikeID FROM likedby WHERE ReviewID = $review_id AND UserID = $user_id AND IsDeleted = 0");
+
+    if ($check_like->num_rows > 0) {
+        // Unlike
+        $conn->query("UPDATE likedby SET IsDeleted = 1 WHERE ReviewID = $review_id AND UserID = $user_id");
+    } else {
+        // Like
+        $conn->query("INSERT INTO likedby (ReviewID, UserID, LikeDate) VALUES ($review_id, $user_id, NOW())");
+    }
+
+    // Echo a success message or any data needed by the AJAX request
+    echo 'success';
+    exit();
+}
+
 // Handle comment submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
     $stmt = $conn->prepare("INSERT INTO commentmetadata (ReviewID, UserID, CommentText) VALUES (?, ?, ?)");
     $stmt->bind_param("iis", $_POST['review_id'], $_SESSION['user_id'], $_POST['comment_text']);
     $stmt->execute();
     $stmt->close();
-    
+
     // Redirect to prevent form resubmission
     header("Location: restaurant_details.php?id=".$restaurant_id);
     exit();
@@ -38,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
 
 // Get restaurant details
 $restaurant = $conn->query("
-    SELECT r.*, AVG(rm.Rating) as AvgRating 
+    SELECT r.*, AVG(rm.Rating) as AvgRating
     FROM restaurant r
     LEFT JOIN reviewmetabase rm ON r.RestaurantID = rm.RestaurantID AND rm.IsDeleted = 0
     WHERE r.RestaurantID = $restaurant_id AND r.IsDeleted = 0
@@ -51,7 +72,7 @@ if (!$restaurant) {
 
 // Get menu items
 $menu = $conn->query("
-    SELECT f.*, c.Name as CuisineName 
+    SELECT f.*, c.Name as CuisineName
     FROM food f
     JOIN cuisine c ON f.CuisineID = c.CuisineID
     WHERE f.RestaurantID = $restaurant_id AND f.IsDeleted = 0
@@ -60,7 +81,7 @@ $menu = $conn->query("
 
 // Get reviews with comments
 $reviews = $conn->query("
-    SELECT rm.*, u.Username 
+    SELECT rm.*, u.Username
     FROM reviewmetabase rm
     JOIN usercredentials u ON rm.UserID = u.UserID
     WHERE rm.RestaurantID = $restaurant_id AND rm.IsDeleted = 0
@@ -72,15 +93,15 @@ $comments = [];
 if ($reviews->num_rows > 0) {
     $review_ids = array_column($reviews->fetch_all(MYSQLI_ASSOC), 'ReviewID');
     $reviews->data_seek(0); // Reset pointer
-    
+
     $comment_result = $conn->query("
-        SELECT c.*, u.Username 
+        SELECT c.*, u.Username
         FROM commentmetadata c
         JOIN usercredentials u ON c.UserID = u.UserID
         WHERE c.ReviewID IN (".implode(',', $review_ids).") AND c.IsDeleted = 0
         ORDER BY c.CommentDate
     ");
-    
+
     while ($comment = $comment_result->fetch_assoc()) {
         $comments[$comment['ReviewID']][] = $comment;
     }
@@ -189,6 +210,24 @@ if ($reviews->num_rows > 0) {
         .back-link:hover {
             background-color: #5a6268;
         }
+        .review-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 15px;
+        }
+        .like-btn {
+            color: #666;
+            text-decoration: none;
+        }
+        .like-btn.liked {
+            color: red;
+        }
+        .like-btn:hover {
+            text-decoration: underline;
+        }
+        .like-count {
+            margin-left: 5px;
+        }
     </style>
 </head>
 <body>
@@ -205,7 +244,7 @@ if ($reviews->num_rows > 0) {
             (<?= number_format($restaurant['AvgRating'], 1) ?> average rating)
         </div>
     </div>
-    
+
     <div class="section">
         <h2 class="section-title">Menu</h2>
         <?php if ($menu->num_rows > 0): ?>
@@ -221,7 +260,7 @@ if ($reviews->num_rows > 0) {
             <p>No menu items listed for this restaurant.</p>
         <?php endif; ?>
     </div>
-    
+
     <div class="section">
         <h2 class="section-title">Reviews</h2>
         <?php if ($reviews->num_rows > 0): ?>
@@ -235,8 +274,31 @@ if ($reviews->num_rows > 0) {
                         </div>
                     </div>
                     <p><?= htmlspecialchars($review['ReviewText']) ?></p>
-                    
-                    <!-- Comments Section -->
+
+                    <div class="review-actions">
+                        <?php
+                        // Check if user already liked this review
+                        $user_liked = false;
+                        if (isset($_SESSION['user_id'])) {
+                            $like_check = $conn->query("SELECT LikeID FROM likedby
+                                                        WHERE ReviewID = {$review['ReviewID']}
+                                                        AND UserID = {$_SESSION['user_id']}
+                                                        AND IsDeleted = 0");
+                            $user_liked = $like_check->num_rows > 0;
+                        }
+
+                        // Get like count
+                        $like_count = $conn->query("SELECT COUNT(*) as count FROM likedby
+                                                    WHERE ReviewID = {$review['ReviewID']}
+                                                    AND IsDeleted = 0")->fetch_assoc()['count'];
+                        ?>
+
+                        <a href="?id=<?= $restaurant_id ?>&like_review=<?= $review['ReviewID'] ?>"
+                           class="like-btn <?= $user_liked ? 'liked' : '' ?>">
+                            ♥ <span class="like-count"><?= $like_count ?></span>
+                        </a>
+                    </div>
+
                     <h4>Comments</h4>
                     <?php if (!empty($comments[$review['ReviewID']])): ?>
                         <?php foreach($comments[$review['ReviewID']] as $comment): ?>
@@ -251,12 +313,12 @@ if ($reviews->num_rows > 0) {
                     <?php else: ?>
                         <p>No comments yet.</p>
                     <?php endif; ?>
-                    
-                    <!-- Comment Form -->
-                    <form class="comment-form" method="POST">
+
+                    <form class="comment-form" method="POST" action="submit_comment.php">
                         <input type="hidden" name="review_id" value="<?= $review['ReviewID'] ?>">
+                        <input type="hidden" name="redirect" value="<?= htmlspecialchars($_SERVER['REQUEST_URI']) ?>">
                         <textarea name="comment_text" placeholder="Write a comment..." required></textarea>
-                        <button type="submit" name="add_comment">Post Comment</button>
+                        <button type="submit">Post Comment</button>
                     </form>
                 </div>
             <?php endwhile; ?>
@@ -264,8 +326,41 @@ if ($reviews->num_rows > 0) {
             <p>No reviews yet for this restaurant.</p>
         <?php endif; ?>
     </div>
-    
+
     <a href="restaurants.php" class="back-link">← Back to Restaurants</a>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle like button clicks with AJAX
+            document.querySelectorAll('.like-btn').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+
+                    if (!<?= isset($_SESSION['user_id']) ? 'true' : 'false' ?>) {
+                        window.location.href = 'login.php';
+                        return;
+                    }
+
+                    fetch(this.href)
+                        .then(response => response.text())
+                        .then(() => {
+                            // Toggle like state visually
+                            this.classList.toggle('liked');
+
+                            // Update like count
+                            const likeCountSpan = this.querySelector('.like-count');
+                            let currentCount = parseInt(likeCountSpan.textContent || 0);
+                            if (this.classList.contains('liked')) {
+                                likeCountSpan.textContent = currentCount + 1;
+                            } else {
+                                likeCountSpan.textContent = Math.max(0, currentCount - 1);
+                            }
+                        })
+                        .catch(error => console.error('Error:', error));
+                });
+            });
+        });
+    </script>
 </body>
 </html>
 <?php

@@ -24,14 +24,7 @@ if (!$restaurant) {
     die("No restaurant found");
 }
 
-// Handle comment submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_comment'])) {
-    $stmt = $conn->prepare("INSERT INTO commentmetadata 
-                          (ReviewID, UserID, CommentText) VALUES (?, ?, ?)");
-    $stmt->bind_param("iis", $_POST['review_id'], $_SESSION['user_id'], $_POST['comment_text']);
-    $stmt->execute();
-    $stmt->close();
-}
+// Handle comment submission (this part is now handled by submit_comment.php)
 
 // Get reviews
 $reviews = $conn->query("
@@ -46,13 +39,13 @@ $comments = [];
 if ($reviews->num_rows > 0) {
     $review_ids = array_column($reviews->fetch_all(MYSQLI_ASSOC), 'ReviewID');
     $reviews->data_seek(0); // Reset pointer
-    
+
     $comment_result = $conn->query("
         SELECT c.*, u.Username FROM commentmetadata c
         JOIN usercredentials u ON c.UserID = u.UserID
         WHERE c.ReviewID IN (".implode(',', $review_ids).") AND c.IsDeleted = 0
     ");
-    
+
     while ($comment = $comment_result->fetch_assoc()) {
         $comments[$comment['ReviewID']][] = $comment;
     }
@@ -70,11 +63,20 @@ if ($reviews->num_rows > 0) {
         .comment-form { margin-top: 15px; }
         textarea { width: 100%; padding: 8px; margin-bottom: 5px; }
         .rating { color: gold; font-weight: bold; }
+        .review-actions {
+            margin-top: 10px;
+            display: flex;
+            gap: 15px;
+            align-items: center; /* Align items vertically in the center */
+        }
+        .like-count {
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <h1>Customer Reviews</h1>
-    
+
     <?php if ($reviews->num_rows > 0): ?>
         <?php while($review = $reviews->fetch_assoc()): ?>
             <div class="review">
@@ -84,7 +86,16 @@ if ($reviews->num_rows > 0) {
                 </div>
                 <p><em><?= $review['ReviewDate'] ?></em></p>
                 <p><?= htmlspecialchars($review['ReviewText']) ?></p>
-                
+
+                <div class="review-actions">
+                    <?php
+                    $like_count = $conn->query("SELECT COUNT(*) as count FROM likedby
+                                                WHERE ReviewID = {$review['ReviewID']}
+                                                AND IsDeleted = 0")->fetch_assoc()['count'];
+                    ?>
+                    <span class="like-count">♥ <?= $like_count ?> likes</span>
+                </div>
+
                 <h4>Comments:</h4>
                 <?php if (!empty($comments[$review['ReviewID']])): ?>
                     <?php foreach($comments[$review['ReviewID']] as $comment): ?>
@@ -97,18 +108,19 @@ if ($reviews->num_rows > 0) {
                 <?php else: ?>
                     <p>No comments yet.</p>
                 <?php endif; ?>
-                
-                <form class="comment-form" method="POST">
+
+                <form class="comment-form" method="POST" action="submit_comment.php">
                     <input type="hidden" name="review_id" value="<?= $review['ReviewID'] ?>">
+                    <input type="hidden" name="redirect" value="<?= htmlspecialchars($_SERVER['REQUEST_URI']) ?>">
                     <textarea name="comment_text" placeholder="Write a response..." required></textarea>
-                    <button type="submit" name="add_comment">Post Comment</button>
+                    <button type="submit">Post Comment</button>
                 </form>
             </div>
         <?php endwhile; ?>
     <?php else: ?>
         <p>No reviews yet for your restaurant.</p>
     <?php endif; ?>
-    
+
     <p><a href="owner_dashboard.php">← Back to Dashboard</a></p>
 </body>
 </html>
