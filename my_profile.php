@@ -33,7 +33,7 @@ $profile = $profile_result->fetch_assoc();
 
 // Get user's recent reviews
 $reviews_query = "
-    SELECT r.ReviewID, r.RestaurantID, res.Name as RestaurantName, 
+    SELECT r.ReviewID, r.RestaurantID, res.Name as RestaurantName,
            r.Rating, r.ReviewText, r.ReviewDate
     FROM reviewmetabase r
     JOIN restaurant res ON r.RestaurantID = res.RestaurantID
@@ -43,6 +43,27 @@ $reviews_query = "
 ";
 
 $reviews_result = $conn->query($reviews_query);
+$reviews = $reviews_result->fetch_all(MYSQLI_ASSOC);
+$reviews_result->free();
+
+// Get photos for the user's recent reviews
+$review_photos = [];
+if (!empty($reviews)) {
+    $review_ids = array_column($reviews, 'ReviewID');
+    $placeholders = implode(',', array_fill(0, count($review_ids), '?'));
+    $photo_stmt = $conn->prepare("SELECT ReviewID, FilePath FROM review_photos WHERE ReviewID IN ($placeholders) AND IsDeleted = 0");
+    if ($photo_stmt) {
+        $photo_stmt->bind_param(str_repeat('i', count($review_ids)), ...$review_ids);
+        $photo_stmt->execute();
+        $photo_result = $photo_stmt->get_result();
+        while ($photo = $photo_result->fetch_assoc()) {
+            $review_photos[$photo['ReviewID']][] = $photo['FilePath'];
+        }
+        $photo_stmt->close();
+    } else {
+        error_log("Error preparing photo statement: " . $conn->error);
+    }
+}
 ?>
 <!DOCTYPE html>
 <html>
@@ -127,6 +148,18 @@ $reviews_result = $conn->query($reviews_query);
             background-color: #f0f0f0;
             color: #999;
         }
+        .review-images-container {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto; /* Allow horizontal scrolling for many images */
+        }
+        .review-image {
+            max-width: 100px;
+            height: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -136,25 +169,25 @@ $reviews_result = $conn->query($reviews_query);
         <?php else: ?>
             <div class="profile-pic default-pic">👤</div>
         <?php endif; ?>
-        
+
         <div class="profile-info">
             <h1><?= htmlspecialchars($profile['FullName']) ?></h1>
             <div class="profile-meta"><strong>Username:</strong> <?= htmlspecialchars($profile['Username']) ?></div>
             <div class="profile-meta"><strong>Email:</strong> <?= htmlspecialchars($profile['Email']) ?></div>
             <div class="profile-meta"><strong>Account Type:</strong> <?= htmlspecialchars($profile['RoleName']) ?></div>
-            
+
             <div style="margin-top: 15px;">
                 <a href="edit_profile.php" class="btn">Edit Profile</a>
                 <a href="change_password.php" class="btn">Change Password</a>
             </div>
         </div>
     </div>
-    
+
     <div class="section">
         <h2 class="section-title">My Recent Reviews</h2>
-        
-        <?php if ($reviews_result->num_rows > 0): ?>
-            <?php while($review = $reviews_result->fetch_assoc()): ?>
+
+        <?php if (!empty($reviews)): ?>
+            <?php foreach($reviews as $review): ?>
                 <div class="review-card">
                     <div class="review-header">
                         <div>
@@ -164,15 +197,24 @@ $reviews_result = $conn->query($reviews_query);
                         <div class="review-date"><?= $review['ReviewDate'] ?></div>
                     </div>
                     <p><?= htmlspecialchars($review['ReviewText']) ?></p>
+
+                    <?php if (isset($review_photos[$review['ReviewID']]) && !empty($review_photos[$review['ReviewID']])): ?>
+                        <div class="review-images-container">
+                            <?php foreach ($review_photos[$review['ReviewID']] as $photoPath): ?>
+                                <img src="<?= htmlspecialchars($photoPath) ?>" alt="Review Photo" class="review-image">
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
                     <a href="restaurant_details.php?id=<?= $review['RestaurantID'] ?>">View Restaurant</a>
                 </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
         <?php else: ?>
             <p>You haven't written any reviews yet.</p>
             <a href="restaurants.php" class="btn">Browse Restaurants</a>
         <?php endif; ?>
     </div>
-    
+
     <a href="user_home.php" class="btn">← Back to Home</a>
 </body>
 </html>

@@ -45,8 +45,8 @@ if (empty($review_text)) {
 $conn->query("SET @DISABLE_TRIGGERS = TRUE");
 
 // Insert review using parameterized query
-$sql = "INSERT INTO reviewmetabase 
-        (UserID, RestaurantID, ReviewDate, Rating, ReviewText, IsDeleted) 
+$sql = "INSERT INTO reviewmetabase
+        (UserID, RestaurantID, ReviewDate, Rating, ReviewText, IsDeleted)
         VALUES (?, ?, NOW(), ?, ?, 0)";
 
 $stmt = $conn->prepare($sql);
@@ -59,11 +59,70 @@ if (!$stmt) {
 $stmt->bind_param("iiis", $user_id, $restaurant_id, $rating, $review_text);
 
 if ($stmt->execute()) {
+    $review_id = $conn->insert_id; // Get the ID of the newly inserted review
+
+    // Handle image uploads
+    if (isset($_FILES['review_images']) && !empty($_FILES['review_images']['name'][0])) {
+        $uploadDir = 'uploads/review_images/'; // Create this directory if it doesn't exist
+        $maxFileSize = 5 * 1024 * 1024; // 5MB
+        $allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+
+        foreach ($_FILES['review_images']['tmp_name'] as $key => $tmpName) {
+            $fileName = $_FILES['review_images']['name'][$key];
+            $fileSize = $_FILES['review_images']['size'][$key];
+            $fileType = $_FILES['review_images']['type'][$key];
+            $fileError = $_FILES['review_images']['error'][$key];
+
+            error_log("Processing file: " . $fileName . ", Size: " . $fileSize . ", Type: " . $fileType . ", Error: " . $fileError);
+
+            if ($fileError === UPLOAD_ERR_OK) {
+                if (in_array($fileType, $allowedTypes)) {
+                    if ($fileSize <= $maxFileSize) {
+                        $newFileName = uniqid() . '_' . basename($fileName);
+                        $destination = $uploadDir . $newFileName;
+
+                        error_log("Attempting to move " . $tmpName . " to " . $destination);
+                        if (move_uploaded_file($tmpName, $destination)) {
+                            // Save the file path to the database
+                            $photoSql = "INSERT INTO review_photos (ReviewID, FilePath) VALUES (?, ?)";
+                            $photoStmt = $conn->prepare($photoSql);
+                            if ($photoStmt) {
+                                $photoStmt->bind_param("is", $review_id, $destination);
+                                $photoStmt->execute();
+                                $photoStmt->close();
+                                error_log("File " . $fileName . " successfully uploaded and path saved.");
+                            } else {
+                                error_log("Prepare photo statement failed: " . $conn->error);
+                                // Optionally handle this error, maybe delete the uploaded file
+                            }
+                        } else {
+                            error_log("Failed to move uploaded file: " . $fileName);
+                            header("Location: write_review.php?error=upload_error");
+                            exit();
+                        }
+                    } else {
+                        error_log("File size exceeded: " . $fileName);
+                        header("Location: write_review.php?error=file_size_exceeded");
+                        exit();
+                    }
+                } else {
+                    error_log("Invalid file type: " . $fileName . " (" . $fileType . ")");
+                    header("Location: write_review.php?error=invalid_file_type");
+                    exit();
+                }
+            } elseif ($fileError !== UPLOAD_ERR_NO_FILE) {
+                error_log("Upload error for " . $fileName . ": " . $fileError);
+                header("Location: write_review.php?error=upload_error");
+                exit();
+            }
+        }
+    }
+
     // Re-enable triggers
     $conn->query("SET @DISABLE_TRIGGERS = FALSE");
     header("Location: user_home.php?success=1");
 } else {
-    error_log("Execute failed: " . $stmt->error);
+    error_log("Execute review statement failed: " . $stmt->error);
     header("Location: write_review.php?error=database");
 }
 

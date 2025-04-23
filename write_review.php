@@ -19,13 +19,12 @@ if (!isset($_SESSION['user_id'])) {
 
 // Get restaurants for dropdown
 $restaurants = $conn->query("
-    SELECT RestaurantID, Name 
-    FROM restaurant 
+    SELECT RestaurantID, Name
+    FROM restaurant
     WHERE IsDeleted = 0
     ORDER BY Name
 ");
 
-// Check for errors in query execution
 if (!$restaurants) {
     die("Error fetching restaurants: " . $conn->error);
 }
@@ -46,7 +45,7 @@ if (!$restaurants) {
             flex-direction: column;
             gap: 15px;
         }
-        select, textarea, input {
+        select, textarea, input[type="number"], input[type="file"] {
             padding: 8px;
             font-size: 16px;
         }
@@ -65,10 +64,10 @@ if (!$restaurants) {
 </head>
 <body>
     <h1>Write a Review</h1>
-    
+
     <?php if (isset($_GET['error'])): ?>
         <div class="error">
-            <?php 
+            <?php
             switch($_GET['error']) {
                 case 'invalid_rating':
                     echo "Please select a rating between 1 and 5 stars";
@@ -79,33 +78,47 @@ if (!$restaurants) {
                 case 'database':
                     echo "There was an error saving your review. Please try again.";
                     break;
+                case 'upload_error':
+                    echo "Error uploading one or more images. Please try again.";
+                    break;
+                case 'invalid_file_type':
+                    echo "One or more selected files are not valid image types (JPEG, PNG, GIF).";
+                    break;
+                case 'file_size_exceeded':
+                    echo "One or more uploaded files exceeded the maximum allowed size.";
+                    break;
                 default:
                     echo "An error occurred. Please try again.";
             }
             ?>
         </div>
     <?php endif; ?>
-    
-    <form action="submit_review.php" method="POST">
+
+    <form action="submit_review.php" method="POST" enctype="multipart/form-data">
         <select name="restaurant_id" required>
             <option value="">Select Restaurant</option>
-            <?php 
+            <?php
             if ($restaurants->num_rows > 0) {
                 while($row = $restaurants->fetch_assoc()) {
-                    echo '<option value="' . $row['RestaurantID'] . '">' 
-                        . htmlspecialchars($row['Name']) . '</option>';
+                    echo '<option value="' . $row['RestaurantID'] . '">'
+                         . htmlspecialchars($row['Name']) . '</option>';
                 }
             } else {
                 echo '<option value="" disabled>No restaurants available</option>';
             }
             ?>
         </select>
-        
+
         <label for="rating">Rating (1-5):</label>
         <input type="number" id="rating" name="rating" min="1" max="5" required>
-        
+
+        <label for="review_text">Your Review:</label>
         <textarea name="review_text" placeholder="Your review..." rows="5" required></textarea>
-        
+
+        <label for="review_images">Add Photos (JPEG, PNG, GIF - Max 5MB each):</label>
+        <input type="file" id="review_images" name="review_images[]" accept="image/jpeg, image/png, image/gif" multiple>
+        <small>You can select multiple images.</small>
+
         <button type="submit">Submit Review</button>
     </form>
 </body>

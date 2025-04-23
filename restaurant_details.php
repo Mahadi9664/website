@@ -80,20 +80,20 @@ $menu = $conn->query("
 ");
 
 // Get reviews with comments
-$reviews = $conn->query("
+$reviews_result = $conn->query("
     SELECT rm.*, u.Username
     FROM reviewmetabase rm
     JOIN usercredentials u ON rm.UserID = u.UserID
     WHERE rm.RestaurantID = $restaurant_id AND rm.IsDeleted = 0
     ORDER BY rm.ReviewDate DESC
 ");
+$reviews = $reviews_result->fetch_all(MYSQLI_ASSOC);
+$reviews_result->free();
 
 // Get all comments for these reviews
 $comments = [];
-if ($reviews->num_rows > 0) {
-    $review_ids = array_column($reviews->fetch_all(MYSQLI_ASSOC), 'ReviewID');
-    $reviews->data_seek(0); // Reset pointer
-
+if (!empty($reviews)) {
+    $review_ids = array_column($reviews, 'ReviewID');
     $comment_result = $conn->query("
         SELECT c.*, u.Username
         FROM commentmetadata c
@@ -101,9 +101,28 @@ if ($reviews->num_rows > 0) {
         WHERE c.ReviewID IN (".implode(',', $review_ids).") AND c.IsDeleted = 0
         ORDER BY c.CommentDate
     ");
-
     while ($comment = $comment_result->fetch_assoc()) {
         $comments[$comment['ReviewID']][] = $comment;
+    }
+    $comment_result->free();
+}
+
+// Get photos for the reviews
+$review_photos = [];
+if (!empty($reviews)) {
+    $review_ids = array_column($reviews, 'ReviewID');
+    $placeholders = implode(',', array_fill(0, count($review_ids), '?'));
+    $photo_stmt = $conn->prepare("SELECT ReviewID, FilePath FROM review_photos WHERE ReviewID IN ($placeholders) AND IsDeleted = 0");
+    if ($photo_stmt) {
+        $photo_stmt->bind_param(str_repeat('i', count($review_ids)), ...$review_ids);
+        $photo_stmt->execute();
+        $photo_result = $photo_stmt->get_result();
+        while ($photo = $photo_result->fetch_assoc()) {
+            $review_photos[$photo['ReviewID']][] = $photo['FilePath'];
+        }
+        $photo_stmt->close();
+    } else {
+        error_log("Error preparing photo statement: " . $conn->error);
     }
 }
 ?>
@@ -228,6 +247,18 @@ if ($reviews->num_rows > 0) {
         .like-count {
             margin-left: 5px;
         }
+        .review-images-container {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto; /* Allow horizontal scrolling for many images */
+        }
+        .review-image {
+            max-width: 150px;
+            height: auto;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -263,8 +294,8 @@ if ($reviews->num_rows > 0) {
 
     <div class="section">
         <h2 class="section-title">Reviews</h2>
-        <?php if ($reviews->num_rows > 0): ?>
-            <?php while($review = $reviews->fetch_assoc()): ?>
+        <?php if (!empty($reviews)): ?>
+            <?php foreach($reviews as $review): ?>
                 <div class="review">
                     <div class="review-header">
                         <div class="review-author"><?= htmlspecialchars($review['Username']) ?></div>
@@ -275,22 +306,31 @@ if ($reviews->num_rows > 0) {
                     </div>
                     <p><?= htmlspecialchars($review['ReviewText']) ?></p>
 
+                    <?php if (isset($review_photos[$review['ReviewID']]) && !empty($review_photos[$review['ReviewID']])): ?>
+                        <h4>Photos:</h4>
+                        <div class="review-images-container">
+                            <?php foreach ($review_photos[$review['ReviewID']] as $photoPath): ?>
+                                <img src="<?= htmlspecialchars($photoPath) ?>" alt="Review Photo" class="review-image">
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="review-actions">
                         <?php
                         // Check if user already liked this review
                         $user_liked = false;
                         if (isset($_SESSION['user_id'])) {
                             $like_check = $conn->query("SELECT LikeID FROM likedby
-                                                        WHERE ReviewID = {$review['ReviewID']}
-                                                        AND UserID = {$_SESSION['user_id']}
-                                                        AND IsDeleted = 0");
+                                                         WHERE ReviewID = {$review['ReviewID']}
+                                                           AND UserID = {$_SESSION['user_id']}
+                                                           AND IsDeleted = 0");
                             $user_liked = $like_check->num_rows > 0;
                         }
 
                         // Get like count
                         $like_count = $conn->query("SELECT COUNT(*) as count FROM likedby
-                                                    WHERE ReviewID = {$review['ReviewID']}
-                                                    AND IsDeleted = 0")->fetch_assoc()['count'];
+                                                     WHERE ReviewID = {$review['ReviewID']}
+                                                       AND IsDeleted = 0")->fetch_assoc()['count'];
                         ?>
 
                         <a href="?id=<?= $restaurant_id ?>&like_review=<?= $review['ReviewID'] ?>"
@@ -321,7 +361,7 @@ if ($reviews->num_rows > 0) {
                         <button type="submit">Post Comment</button>
                     </form>
                 </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
         <?php else: ?>
             <p>No reviews yet for this restaurant.</p>
         <?php endif; ?>
